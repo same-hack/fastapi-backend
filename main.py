@@ -1,14 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db import models                          # ✅ モデル定義を読み込む（テーブル作成のため）
-from db.database import engine                 # ✅ DBエンジン（接続情報）
+from db import models                          # モデル定義を読み込む（テーブル作成のため）
+from db.database import engine                 # DBエンジン（接続情報）
 
-from routers import users                      # ✅ users API
-from routers import my_table                   # ✅ ← 追加！
+from routers import users                      # users API
+from routers import my_table                   # 追加したAPI
 
 # ============================
-# ✅ FastAPI アプリケーションの初期化
+# FastAPI アプリケーションの初期化
 # ============================
 app = FastAPI(
     title="My FastAPI App",
@@ -17,7 +17,7 @@ app = FastAPI(
 )
 
 # ============================
-# ✅ CORS設定（Vueフロントエンドと通信可能に）
+# CORS設定（Vueフロントエンドと通信可能に）
 # ============================
 app.add_middleware(
     CORSMiddleware,
@@ -28,15 +28,20 @@ app.add_middleware(
 )
 
 # ============================
-# ✅ DBのテーブルを作成（初回のみ）
+# DBのテーブルを作成（初回のみ）
+# DB接続失敗しても起動を継続するために例外処理を入れる
 # ============================
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+except Exception as e:
+    # ログを出して起動を続行（例：接続失敗など）
+    print(f"Warning: DB接続失敗またはテーブル作成失敗: {e}")
 
 # ============================
-# ✅ APIルーター登録
+# APIルーター登録
 # ============================
 app.include_router(users.router, prefix="/api")
-app.include_router(my_table.router, prefix="/api")  # ✅ ← 追加！
+app.include_router(my_table.router, prefix="/api")  # 追加API
 
 # 🚀 今後の拡張例
 # from routers import tasks

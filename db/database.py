@@ -1,4 +1,5 @@
-# db/database.py
+from dotenv import load_dotenv
+load_dotenv()  # .envファイルから環境変数を読み込む
 
 import os  # 環境変数を取得するために必要
 from sqlalchemy import create_engine

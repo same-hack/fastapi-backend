@@ -3,9 +3,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from db.database import SessionLocal
-from models.my_schema.my_table import MyTable
 from typing import List
 from pydantic import BaseModel
+# routers/my_table.py
+from db.models.my_schema.my_table import MyTable
+
 
 # ===============================
 # ✅ レスポンス用のPydanticスキーマ
