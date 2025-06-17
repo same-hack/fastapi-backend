@@ -35,24 +35,24 @@ def get_all_my_table(db: Session = Depends(get_db)):
     )
 
 # ===============================
-# ✅ 最新の1件取得APIエンドポイント
+# ✅ 最新の1件取得APIエンドポイント（ridベース）
 # ===============================
 @router.get("/latest", response_model=Optional[MyTableResponse])
 def get_latest_my_table(db: Session = Depends(get_db)):
     return (
         db.query(MyTable)
-        .order_by(MyTable.datetime_update.desc())
+        .order_by(MyTable.rid.desc())  # ✅ rid を基準に降順で並べて最初の1件
         .first()
     )
 
 # ===============================
-# ✅ 最新の1件取得API（リレーション付き）
+# ✅ 最新の1件取得API（リレーション付き、ridベース）
 # ===============================
 @router.get("/latest/with-related", response_model=Optional[MyTableResponse])
 def get_latest_my_table_with_related(db: Session = Depends(get_db)):
     return (
         db.query(MyTable)
         .options(joinedload(MyTable.related_row))  # RelatedTable を同時に取得
-        .order_by(MyTable.datetime_update.desc())
+        .order_by(MyTable.rid.desc())              # ✅ ridベースに変更
         .first()
     )
