@@ -18,7 +18,7 @@ class RelatedTable(Base):
     )
 
     # ✅ 任意の datetime カラム
-    date = Column(DateTime)
+    date = Column(DateTime, nullable=True)
 
     # ✅ MyTable 側のリレーションと対応（back_populates を使って双方向に接続）
     my_table = relationship(

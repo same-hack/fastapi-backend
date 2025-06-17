@@ -7,12 +7,19 @@ class MyTable(Base):
     __tablename__ = "my_table"
     __table_args__ = {"schema": "my_schema"}  # ✅ スキーマを指定
 
-    rid = Column(Integer, primary_key=True, index=True)
-    type = Column(Integer)
-    state = Column(Integer)
-    datetime_update = Column(TIMESTAMP)
+    # 🔑 主キー：必須
+    rid = Column(Integer, primary_key=True, index=True, nullable=False)
 
-    # ✅ RelatedTable との一対一リレーション
+    # ✅ 種別：必須
+    type = Column(Integer, nullable=False)
+
+    # ✅ 状態：任意（null許容）
+    state = Column(Integer, nullable=True)
+
+    # ✅ 最終更新日時：任意（null許容）
+    datetime_update = Column(TIMESTAMP, nullable=True)
+
+    # 🔗 RelatedTable との一対一リレーション
     related_row = relationship(
         "models.my_schema.related_table.RelatedTable",  # ← 相手側のフルパス
         back_populates="my_table",
