@@ -2,9 +2,12 @@
 
 from fastapi import APIRouter
 from . import users
+from . import upload
 
-# まとめ用ルーター
 api_router = APIRouter()
 
-# /api/users を登録（prefixは users.py 側で設定済み）
+# ユーザ系は /api/users/... になる
 api_router.include_router(users.router)
+
+# アップロードは /api/upload/... になる
+api_router.include_router(upload.router)
