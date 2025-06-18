@@ -9,6 +9,7 @@ from db.database import engine     # DBエンジン
 from routers import users          # users API
 from routers import my_table       # my_table API
 from routers import upload         # ← 追加: upload.py の router をインポート
+from routers import auth  # ✅ 追加
 
 app = FastAPI(
     title="My FastAPI App",
@@ -34,6 +35,7 @@ except Exception as e:
 app.include_router(users.router,    prefix="/api")  # /api/users/...
 app.include_router(my_table.router, prefix="/api")  # /api/my_table/...
 app.include_router(upload.router,   prefix="/api")  # /api/upload/ を有効化
+app.include_router(auth.router, prefix="/api")  #  /api/auth/login にマウント
 
 # (今後の拡張例)
 # from routers import tasks
