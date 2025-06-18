@@ -8,8 +8,8 @@ from db.database import engine     # DBエンジン
 
 from routers import users          # users API
 from routers import my_table       # my_table API
-from routers import upload         # ← 追加: upload.py の router をインポート
-from routers import auth  # ✅ 追加
+from routers import upload         # upload API
+from routers import auth           # auth API  ← 追加
 
 app = FastAPI(
     title="My FastAPI App",
@@ -17,6 +17,7 @@ app = FastAPI(
     description="Example app with Vue + FastAPI + PostgreSQL",
 )
 
+# CORS設定：Vue フロント（http://localhost:5173）からのリクエストを許可
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -25,18 +26,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# テーブル作成（失敗しても起動継続）
+# DBのテーブルを作成（初回のみ／失敗してもアプリ起動は継続）
 try:
     models.Base.metadata.create_all(bind=engine)
 except Exception as e:
     print(f"Warning: DB接続失敗またはテーブル作成失敗: {e}")
 
 # --- 既存ルーター ---
-app.include_router(users.router,    prefix="/api")  # /api/users/...
-app.include_router(my_table.router, prefix="/api")  # /api/my_table/...
-app.include_router(upload.router,   prefix="/api")  # /api/upload/ を有効化
-app.include_router(auth.router, prefix="/api")  #  /api/auth/login にマウント
 
-# (今後の拡張例)
-# from routers import tasks
-# app.include_router(tasks.router, prefix="/api")
+app.include_router(users.router,     prefix="/api")
+app.include_router(my_table.router,  prefix="/api")
+app.include_router(upload.router,    prefix="/api")
+app.include_router(auth.router,      prefix="/api")
+

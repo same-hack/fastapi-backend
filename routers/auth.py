@@ -1,46 +1,33 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List
+# routers/auth.py
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from db.database import SessionLocal
+from db.models.test_schema.mng_user import MngUser
+from schemas.test_schema.mng_user import LoginRequest, LoginResponse
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-# ===============================
-# ✅ ダミーユーザデータ（実際はDBに置き換える予定）
-# ===============================
-dummy_users = [
-    {"rid": 1, "username": "admin", "password": "pass", "is_admin": True},
-    {"rid": 2, "username": "user", "password": "1234", "is_admin": False},
-]
+def get_db():
+    """DBセッションを取得し、リクエスト終了後にクローズする依存関数"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-# ===============================
-# ✅ ログインリクエスト用スキーマ
-# ===============================
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-# ===============================
-# ✅ ログインレスポンス用スキーマ
-# ===============================
-class LoginResponse(BaseModel):
-    rid: int
-    username: str
-    is_admin: bool
-    message: str
-
-# ===============================
-# ✅ ログインエンドポイント
-# ===============================
 @router.post("/login", response_model=LoginResponse)
-def login(login_req: LoginRequest):
-    # ✅ 入力と一致するユーザーを探す
-    for user in dummy_users:
-        if user["username"] == login_req.username and user["password"] == login_req.password:
-            return {
-                "rid": user["rid"],
-                "username": user["username"],
-                "is_admin": user["is_admin"],
-                "message": "ログイン成功"
-            }
-    # ❌ 一致しない場合はエラーを返す
-    raise HTTPException(status_code=401, detail="ユーザー名またはパスワードが正しくありません")
+def login(login_req: LoginRequest, db: Session = Depends(get_db)):
+    # 1) ユーザー名で検索
+    user = db.query(MngUser).filter(MngUser.username == login_req.username).first()
+
+    # 2) 存在チェック＆パスワード比較
+    if not user or user.password != login_req.password:
+        raise HTTPException(status_code=401, detail="ユーザー名またはパスワードが正しくありません")
+
+    # 3) 成功レスポンス
+    return {
+        "rid": user.rid,
+        "username": user.username,
+        "is_admin": user.is_admin,
+        "message": "ログイン成功",
+    }
