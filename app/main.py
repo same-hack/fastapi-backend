@@ -3,13 +3,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from db import models              # モデル定義（テーブル作成用）
+from app.db import models              # モデル定義（テーブル作成用）
 from app.db.database import engine     # DBエンジン
 
-from routers import users          # users API
-from routers import my_table       # my_table API
-from routers import upload         # upload API
-from routers import auth           # auth API  ← 追加
+from app.routers import users          # users API
+from app.routers import my_table       # my_table API
+from app.routers import upload         # upload API
+from app.routers import auth           # auth API  ← 追加
 
 app = FastAPI(
     title="My FastAPI App",

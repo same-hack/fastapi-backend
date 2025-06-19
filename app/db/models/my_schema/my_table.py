@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, TIMESTAMP
 from sqlalchemy.orm import relationship
-from db.database import Base
+from app.db.database import Base
 
 # ✅ my_schema.my_table に対応するモデル
 class MyTable(Base):

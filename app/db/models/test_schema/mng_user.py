@@ -1,6 +1,6 @@
 # db/models/test_schema/mng_user.py
 from sqlalchemy import Column, Integer, String, Boolean
-from db.database import Base
+from app.db.database import Base
 
 class MngUser(Base):
     __tablename__ = "mng_user"

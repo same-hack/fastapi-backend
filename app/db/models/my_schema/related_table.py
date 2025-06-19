@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
-from db.database import Base
+from app.db.database import Base
 
 class RelatedTable(Base):
     __tablename__ = "related_table"

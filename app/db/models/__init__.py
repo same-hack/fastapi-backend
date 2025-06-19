@@ -1,7 +1,7 @@
 # db/models/__init__.py
 
 # まず Base を database.py から持ってくる
-from db.database import Base
+from app.db.database import Base
 
 # 次に各テーブルモデルをインポート
 from .my_schema.my_table import MyTable

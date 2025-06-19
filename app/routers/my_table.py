@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, joinedload
-from db.database import SessionLocal
+from app.db.database import SessionLocal
 from typing import List, Optional
 
 # ✅ スキーマ（Pydanticモデル）は外部ファイルからインポート
-from schemas.my_schema.my_table import MyTableResponse
-from db.models.my_schema.my_table import MyTable
+from app.schemas.my_schema.my_table import MyTableResponse
+from app.db.models.my_schema.my_table import MyTable
 
 # ===============================
 # ✅ APIRouterインスタンスの生成
@@ -20,7 +20,7 @@ def get_db():
     try:
         yield db
     finally:
-        db.close()
+        app.db.close()
 
 # ===============================
 # ✅ 全件取得APIエンドポイント
@@ -29,7 +29,7 @@ def get_db():
 def get_all_my_table(db: Session = Depends(get_db)):
     # 🚀 RelatedTable も同時に取得（リレーション込み）
     return (
-        db.query(MyTable)
+        app.db.query(MyTable)
         .options(joinedload(MyTable.related_row))
         .all()
     )
@@ -40,7 +40,7 @@ def get_all_my_table(db: Session = Depends(get_db)):
 @router.get("/latest", response_model=Optional[MyTableResponse])
 def get_latest_my_table(db: Session = Depends(get_db)):
     return (
-        db.query(MyTable)
+        app.db.query(MyTable)
         .order_by(MyTable.rid.desc())  # ✅ rid を基準に降順で並べて最初の1件
         .first()
     )
@@ -51,7 +51,7 @@ def get_latest_my_table(db: Session = Depends(get_db)):
 @router.get("/latest/with-related", response_model=Optional[MyTableResponse])
 def get_latest_my_table_with_related(db: Session = Depends(get_db)):
     return (
-        db.query(MyTable)
+        app.db.query(MyTable)
         .options(joinedload(MyTable.related_row))  # RelatedTable を同時に取得
         .order_by(MyTable.rid.desc())              # ✅ ridベースに変更
         .first()
