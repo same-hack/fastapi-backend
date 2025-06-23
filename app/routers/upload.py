@@ -76,8 +76,8 @@ async def upload_chunk(
                     final_file.write(part.read())
 
         # チャンクファイルの削除（任意）
-        # import shutil
-        # shutil.rmtree(chunk_dir)
+        import shutil
+        shutil.rmtree(chunk_dir)
 
         return {
             "filename": final_file_name,
