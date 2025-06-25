@@ -1,133 +1,170 @@
-from fastapi import APIRouter, UploadFile, File, Form
-import os
-from datetime import datetime
-import shutil  # ✅ チャンクディレクトリ削除用
-import boto3   # ✅ MinIO（S3互換）用ライブラリ
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+import boto3
+import uuid
+from botocore.client import Config
 
 # =============================
-# ✅ APIRouter の設定
+# 🎯 このAPIはマルチパートアップロードの管理API
+# - フロントからアップロード準備・URL発行・完了指示を受ける
+# - ファイルデータ自体はpresigned URL経由で直接MinIOに送信される
 # =============================
+
 router = APIRouter(
-    prefix="/upload",         # すべてのルートに /upload が付く
-    tags=["Upload"],          # ドキュメント用タグ
+    prefix="/upload",
+    tags=["Upload"],
 )
 
 # =============================
-# ✅ 保存ディレクトリの設定
+# ✅ MinIOクライアント設定（S3互換）
+# - boto3で MinIO に接続するためのクライアントを作成
+# - v4署名を使用（presigned URL に必要）
 # =============================
-UPLOAD_DIR = "./fastapi_data"  # FastAPI用
-CHUNKS_DIR = os.path.join(UPLOAD_DIR, "chunks")
-MERGED_DIR = UPLOAD_DIR
-
-os.makedirs(UPLOAD_DIR, exist_ok=True)               # なければ作成
-os.makedirs(CHUNKS_DIR, exist_ok=True)
-
-# =============================
-# ✅ MinIO (S3互換) クライアントの設定
-# =============================
-# MinIO用エンドポイントなどを環境変数や設定ファイルから読み込んでもOK
 s3_client = boto3.client(
     "s3",
-    endpoint_url="http://localhost:9000",  # MinIO のエンドポイント
-    aws_access_key_id="minioadmin",        # アクセスキー（MinIOデフォルト）
-    aws_secret_access_key="minioadmin",    # シークレットキー（MinIOデフォルト）
-    region_name="us-east-1",               # ダミーでもOK（S3互換用）
+    endpoint_url="http://localhost:9000",  # MinIOのエンドポイント
+    aws_access_key_id="minioadmin",
+    aws_secret_access_key="minioadmin",
+    region_name="us-east-1",
+    config=Config(signature_version='s3v4')  # presigned URLに必要
 )
 
-# =============================
-# ✅ 通常アップロード（1回で送信）
-# =============================
-@router.post("", summary="ファイルアップロード（末尾スラッシュなし）")
-@router.post("/", summary="ファイルアップロード（末尾スラッシュあり）")
-async def upload_file(file: UploadFile = File(...)):
-    """
-    単発ファイルアップロード。ファイル名に日付プレフィックスを付けて保存。
-    """
-    date_prefix = datetime.now().strftime("%Y%m%d")
-    filename = f"{date_prefix}_{file.filename}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-
-    with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
-
-    return {
-        "filename": filename,
-        "message": "ファイルを保存しました"
-    }
+BUCKET_NAME = "tmp"
 
 # =============================
-# ✅ 分割アップロード用エンドポイント
+# ✅ バケット存在確認＆作成（初回用）
+# - 指定したバケットが無ければ作成
 # =============================
-@router.post("/chunk", summary="分割アップロード（チャンク方式）")
-async def upload_chunk(
-    chunk: UploadFile = File(...),       # チャンクそのもの
-    fileName: str = Form(...),           # 元のファイル名
-    uploadId: str = Form(...),           # アップロードセッションID
-    chunkIndex: int = Form(...),         # チャンク番号（0始まり）
-    totalChunks: int = Form(...)         # チャンクの総数
-):
-    """
-    分割アップロード用。チャンクを一時保存し、全チャンク受信後に結合し、MinIOにPOST。
-    """
+try:
+    s3_client.head_bucket(Bucket=BUCKET_NAME)
+except s3_client.exceptions.ClientError:
+    s3_client.create_bucket(Bucket=BUCKET_NAME)
 
-    # ==================================
-    # ✅ チャンクを一時保存
-    # ==================================
-    chunk_dir = os.path.join(CHUNKS_DIR, uploadId)
-    os.makedirs(chunk_dir, exist_ok=True)
 
-    chunk_path = os.path.join(chunk_dir, f"{chunkIndex}.part")
-    with open(chunk_path, "wb") as f:
-        f.write(await chunk.read())
+# =============================
+# 📦 リクエストボディ定義
+# =============================
+class StartUploadRequest(BaseModel):
+    fileName: str  # ファイル名のみ（MinIO上のオブジェクト名）
 
-    # ==================================
-    # ✅ 全チャンクが揃っていれば結合
-    # ==================================
-    all_received = all(os.path.exists(os.path.join(chunk_dir, f"{i}.part")) for i in range(totalChunks))
-    if all_received:
-        date_prefix = datetime.now().strftime("%Y%m%d")
-        final_file_name = f"{date_prefix}_{fileName}"
-        final_file_path = os.path.join(MERGED_DIR, final_file_name)
 
-        # ✅ チャンク結合
-        with open(final_file_path, "wb") as final_file:
-            for i in range(totalChunks):
-                part_path = os.path.join(chunk_dir, f"{i}.part")
-                with open(part_path, "rb") as part:
-                    final_file.write(part.read())
+class PresignRequest(BaseModel):
+    uploadId: str      # アプリ側で発行したアップロードセッションID
+    chunkIndex: int    # チャンク番号（0始まり）
+    fileName: str      # ファイル名（確認用）
 
-        # ==================================
-        # ✅ MinIO へアップロード
-        # ==================================
-        bucket_name = "uploads"
-        object_key = final_file_name
 
-        # バケットが存在しなければ作成（既に存在していれば何もしない）
-        try:
-            s3_client.head_bucket(Bucket=bucket_name)
-        except s3_client.exceptions.ClientError:
-            s3_client.create_bucket(Bucket=bucket_name)
+class CompleteUploadRequest(BaseModel):
+    uploadId: str
+    fileName: str
+    parts: list[dict]  # 完了時に必要なETag+PartNumberのリスト
 
-        # ファイルをMinIOへアップロード（ローカル→S3）
-        s3_client.upload_file(final_file_path, bucket_name, object_key)
 
-        # ==================================
-        # ✅ ローカルファイル削除
-        # ==================================
-        os.remove(final_file_path)          # 結合後の一時ファイルを削除
-        shutil.rmtree(chunk_dir)            # チャンクも削除（ディレクトリごと）
+# =============================
+# 🧠 簡易的なアップロード状態管理ストア
+# - uploadId → MultipartUpload情報（UploadId, Key, Parts[]）
+# - 本番ではRedisやDBを使って永続化すべき
+# =============================
+UPLOADS = {}  # uploadId -> {"UploadId": ..., "Key": ..., "Parts": [...]}
 
-        # ==================================
-        # ✅ レスポンス返却
-        # ==================================
-        return {
-            "filename": final_file_name,
-            "message": "すべてのチャンクを結合し、MinIO にアップロードしました",
-            "minio_url": f"s3://{bucket_name}/{object_key}"
+
+# =============================
+# 🚀 アップロード開始エンドポイント
+# - フロントからファイル名を受け取り
+# - MinIOに対して create_multipart_upload を実行
+# - アプリ側の uploadId を返す
+# =============================
+@router.post("/start")
+async def start_upload(req: StartUploadRequest):
+    try:
+        # MinIO（S3）側にマルチパートアップロード開始を通知
+        s3_resp = s3_client.create_multipart_upload(
+            Bucket=BUCKET_NAME,
+            Key=req.fileName
+        )
+
+        # アプリケーション側で独自のuploadIdを発行
+        upload_id = str(uuid.uuid4())
+
+        # メモリストアにアップロードセッションを登録
+        UPLOADS[upload_id] = {
+            "UploadId": s3_resp["UploadId"],  # S3用の本物のID
+            "Key": req.fileName,              # ファイル名（S3上のキー）
+            "Parts": []                       # 完了時に使うPart情報リスト
         }
 
-    # チャンク受信中の応答（結合にはまだ到達していない）
-    return {
-        "chunkIndex": chunkIndex,
-        "message": "チャンクを保存しました（まだ結合はしていません）"
-    }
+        # フロントにuploadIdを返す
+        return {"uploadId": upload_id}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================
+# 🔐 presigned URL 発行エンドポイント
+# - 各チャンクのアップロードURLを発行
+# - フロントはこのURLに対して直接PUTアップロード
+# =============================
+@router.post("/presign")
+async def presign_chunk(req: PresignRequest):
+    if req.uploadId not in UPLOADS:
+        raise HTTPException(status_code=404, detail="Invalid uploadId")
+
+    upload_data = UPLOADS[req.uploadId]
+
+    try:
+        # boto3で一時的な署名付きPUT URLを発行（PartNumberは1始まり）
+        url = s3_client.generate_presigned_url(
+            ClientMethod="upload_part",
+            Params={
+                "Bucket": BUCKET_NAME,
+                "Key": upload_data["Key"],
+                "UploadId": upload_data["UploadId"],
+                "PartNumber": req.chunkIndex + 1
+            },
+            ExpiresIn=3600,
+            HttpMethod="PUT"
+        )
+
+        return {
+            "url": url,  # フロントはこのURLに対して直接PUTする
+            "partNumber": req.chunkIndex + 1
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================
+# ✅ アップロード完了エンドポイント
+# - フロントが全てのチャンクをアップロード後に呼び出す
+# - partNumberとETagのリストを受け取り、アップロードを確定する
+# =============================
+@router.post("/complete")
+async def complete_upload(req: CompleteUploadRequest):
+    if req.uploadId not in UPLOADS:
+        raise HTTPException(status_code=404, detail="Invalid uploadId")
+
+    upload_data = UPLOADS[req.uploadId]
+
+    try:
+        # MinIOに対してアップロード完了を通知
+        s3_client.complete_multipart_upload(
+            Bucket=BUCKET_NAME,
+            Key=upload_data["Key"],
+            UploadId=upload_data["UploadId"],
+            MultipartUpload={
+                "Parts": req.parts  # 例: [{"PartNumber": 1, "ETag": "xxxxx"}, ...]
+            }
+        )
+
+        # セッション情報を削除
+        del UPLOADS[req.uploadId]
+
+        return {
+            "message": "アップロード完了",
+            "url": f"s3://{BUCKET_NAME}/{upload_data['Key']}"  # 完成したファイルのS3 URL
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
